@@ -1,0 +1,7 @@
+---
+description: Alabama tree cover on GEE; fractal possibilities, select the optimal path using optimization criteria.
+globs:
+alwaysApply: true
+---
+
+Use PROJECT_SPEC.md and PROJECT_BOUNDARY.md. From one root (goal + constraints), pathways fractal out to many possibilities; the key is **picking the optimal approach**. Evaluate candidate paths against: optimization, scalability, data pipeline efficiency, speed, accuracy, data availability. Do not lock the user into one dimension (e.g. "NLCD" or "GEDI") by default; recommend the path that best satisfies these criteria. Do not suggest PlanetScope, per-scene U-Net, or manual labeling at scale. When suggesting approaches, score or compare them on the criteria and state why the chosen path is optimal.

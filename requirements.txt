@@ -1,0 +1,3 @@
+# GEE exploration (Path A) - geemap script
+geemap>=0.20.0
+earthengine-api>=0.1.350
