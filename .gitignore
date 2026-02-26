@@ -10,6 +10,7 @@ env/
 # GEE / local exports (optional: remove if you want to track small samples)
 *.tif
 alabama_pathA_tile_30m.tif
+*.aux.xml
 
 # IDE / OS
 .idea/
