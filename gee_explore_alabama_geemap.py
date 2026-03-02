@@ -104,7 +104,51 @@ geemap.ee_export_image(
 print(f"Tile export saved to: {out_path}")
 
 m.add_layer(export_region, {"color": "red"}, "Export tile (15x15 km)")
-print("Map layers: S2 composite, NDVI, NLCD forest, export tile boundary.")
+
+# ----- 7. Training samples + Random Forest -----
+scale = 30
+predictor_bands = ["B2", "B3", "B4", "B8", "B11", "B12", "NDVI", "slope"]
+predictor_image = composite.addBands(ndvi).addBands(slope)
+training_image = predictor_image.addBands(forest_classes)
+
+num_pixels = 10000  # Increase for production; decrease for quick tests
+rf_seed = 42
+num_trees = 100
+
+training_samples = training_image.sample(
+    region=alabama_bounds,
+    scale=scale,
+    numPixels=num_pixels,
+    seed=rf_seed,
+    geometries=False,
+)
+
+rf_classifier = ee.Classifier.smileRandomForest(num_trees).train(
+    features=training_samples,
+    classProperty="forest_mask",
+    inputProperties=predictor_bands,
+)
+rf_classified = predictor_image.classify(rf_classifier).rename("forest_rf")
+
+m.add_layer(
+    rf_classified,
+    {"min": 0, "max": 1, "palette": ["#e8e8e8", "darkgreen"]},
+    "RF forest (0/1)",
+    shown=True,
+)
+
+# Optional: export RF tile locally (same 15x15 km region)
+rf_out_path = "alabama_pathA_RF_tile_30m.tif"
+geemap.ee_export_image(
+    rf_classified.toFloat(),
+    filename=rf_out_path,
+    region=export_region,
+    scale=scale,
+    file_per_band=False,
+)
+print(f"RF tile export saved to: {rf_out_path}")
+
+print("Map layers: S2 composite, NDVI, NLCD forest, export tile, RF forest.")
 # In Jupyter: display with m. In script: open in browser with m.show() if desired.
 try:
     m.show()

@@ -69,11 +69,13 @@ Use this to design and compare paths. **Which** assets and dimensions you combin
 
 ## Suggested next steps (order)
 
-1. **Map the fractal**: For Alabama + constraints, list 2–4 distinct candidate paths (e.g. optical + NLCD labels; optical + GEDI height; temporal-only; hybrid). For each, note how it scores on scalability, pipeline efficiency, speed, accuracy, data availability.
-2. **Select the optimal path**: Using the optimization criteria, pick the path (or shortlist) to pursue first. Document why it wins on the criteria that matter most.
-3. **Explore in GEE**: Alabama AOI; load the inputs for the chosen path; one cloud-free composite + one small-tile export to confirm resolutions and data availability.
-4. **Implement pipeline**: composite/features → train or threshold → predict → tiled export; keep it efficient and scalable.
-5. **Document**: Pipeline doc + "what we use" + how the chosen path satisfies the criteria.
+1. ~~**Map the fractal**~~: Done — candidate paths and scores are in PATH_ANALYSIS.md.
+2. ~~**Select the optimal path**~~: Done — Path A (Optical + NLCD → RF) selected and justified.
+3. ~~**Explore in GEE**~~: Done — Alabama AOI, composite, NLCD, terrain; small-tile and full-state export supported.
+4. ~~**Implement pipeline**~~: Done — composite → NDVI + slope → sample from NLCD labels → train RF → classify → export (see gee_alabama_tree_cover_rf.js; TRAINING_AND_RF_GUIDE.md).
+5. ~~**Document**~~: Done — PROJECT_SPEC (this file), PATH_ANALYSIS, TRAINING_AND_RF_GUIDE, README.
+
+**Optional follow-ups**: Path C (temporal + NLCD → RF) for more signal; Path B (GEDI) for validation or height product; or re-run pipeline for a different composite year.
 
 ---
 
@@ -86,3 +88,26 @@ A **state-scale, reproducible, GEE-based** tree (or wooded) cover product for Al
 - Exports in a **tiled, scalable** way and can be validated where reference exists.
 
 The exact path is the one that **best satisfies the optimization criteria** under the constraints above.
+
+---
+
+## What we built (implemented approach)
+
+We implemented **Path A: Optical + NLCD → RF**. Delivered artifact:
+
+- **Product**: A **wooded-area map** (forest vs non-forest, 0/1) for Alabama at **30 m resolution**, for a **target year** (e.g. 2023) chosen via the composite date range.
+- **Labels**: NLCD land cover (we use 2021) — forest = classes 41, 42, 43 (deciduous, evergreen, mixed); all else = non-forest. No manual labeling.
+- **Predictors**: Sentinel-2 cloud-free composite for the target year (B2, B3, B4, B8, B11, B12), **NDVI**, and **slope** (SRTM). Same 30 m scale as NLCD.
+- **Method**: Random Forest trained in GEE on sampled pixels (labels from NLCD, features from composite + NDVI + slope); then we **classify the full state** using only the target-year imagery and export the result.
+
+**Why this is novel vs. using NLCD alone**
+
+- **Temporal update**: NLCD releases are periodic (e.g. 2020/2021). Our pipeline produces a map for **the composite year** (e.g. 2023), so we get an up-to-date wooded map without waiting for the next NLCD release.
+- **Transfer of labels**: We use NLCD as the **training label source**, then apply a model built on **our** feature set (Sentinel-2 bands + NDVI + slope) to **new** imagery. The output can differ where land cover changed or where our predictors capture different spectral/terrain relationships.
+- **Same resolution**: We keep 30 m so the product is directly comparable to NLCD and suitable for state-scale analysis.
+
+**Why it's reasonable**
+
+- Labels come from a trusted CONUS reference (NLCD), not invented.
+- Predictors (reflectance, NDVI, slope) are standard and appropriate for forest vs non-forest.
+- Pipeline is reproducible and tunable (year, bands, RF params); full-state export is handled via GEE tasks to avoid memory limits.

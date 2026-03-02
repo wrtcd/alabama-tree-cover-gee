@@ -9,6 +9,7 @@ We optimize and select; we don't lock in by default.
 - **GEE** as the main platform (compute, export).
 - **Free data** at Alabama scale (optical, temporal, structural, existing products — as chosen by the optimal path).
 - **Alabama** as the target; pipeline **scales** to statewide (tiled export, batch, no manual per-scene).
+- **Delivered product**: A **wooded-area map** (forest vs non-forest, 0/1) for Alabama at 30 m for a chosen year (e.g. 2023), by training a Random Forest on NLCD-derived labels and applying it to Sentinel-2 composite + NDVI + slope — temporally updated relative to NLCD alone.
 - **Data pipelines**: Clear, reproducible flow (ingest → composite/features → train or threshold → predict → export); efficient and GEE-native where possible.
 - **Optimization criteria** drive the choice: optimization, scalability, pipeline efficiency, speed, accuracy, data availability. We **evaluate** candidate paths and **select the optimal** one from the fractal of possibilities — we do not adopt an approach by habit or a single fixed recipe.
 - **Lightweight methods** (e.g. indices, RF, small ML) that stay tractable at scale.

@@ -8,7 +8,7 @@ From **PROJECT_SPEC.md** and **PROJECT_BOUNDARY.md**: one root (Alabama state-sc
 
 | Path | Signal | Labels / target | Scale / method | Short name |
 |------|--------|-----------------|----------------|------------|
-| **A** | Optical (Landsat 8/9 or Sentinel-2): single cloud-free composite + indices (NDVI, etc.) | NLCD Tree Canopy (30 m, CONUS) | RF in GEE; train on composite + indices; predict statewide; tiled export | Optical + NLCD → RF |
+| **A** | Optical (Sentinel-2): single cloud-free composite + NDVI + terrain (slope) | NLCD land cover (2021): forest classes 41/42/43 → 0/1 mask | RF in GEE; train on composite + NDVI + slope; predict statewide; 30 m export | Optical + NLCD → RF |
 | **B** | Optical composite + terrain (DEM, slope) | GEDI L2A (RH98, canopy height) aggregated to grid or as sparse target | RF or regression; GEDI points → 30 m grid or sample-based training | Optical + GEDI height |
 | **C** | Temporal optical: multi-date composites, phenology (e.g. max NDVI, range, seasonality) | NLCD Tree Canopy (or USFS TCC) | RF with temporal + spectral features; same export pattern | Temporal optical + NLCD → RF |
 | **D** | Single cloud-free composite + terrain | NLCD / FIA for validation only; product is index-based (e.g. NDVI threshold) | No RF: threshold + terrain mask; validate with NLCD/FIA | Index-threshold + validation |
@@ -50,17 +50,32 @@ Path **C** is the natural upgrade if we later want higher accuracy and can affor
 
 ---
 
-## 4. Next step: GEE exploration for path A
+## 4. What we implemented (Path A)
 
-For path A, exploration in GEE should:
+We built the full Path A pipeline and use it to produce a **wooded-area map** for Alabama.
 
-- Use **Alabama** as the AOI.
-- Load **inputs**: optical (e.g. Sentinel-2 or Landsat 8/9), cloud-free composite; NLCD Tree Canopy (and optionally terrain).
-- Produce **one cloud-free composite** (visual + layer list) and **one small-tile export** (e.g. 500×500 px at 30 m) to confirm resolutions and data availability.
+### Inputs
 
-Runnable scripts:
+| Input | Source | Role |
+|-------|--------|------|
+| **Labels** | NLCD 2021 land cover — classes 41, 42, 43 → forest (1); all else → non-forest (0) | Training target (no manual labeling) |
+| **Optical** | Sentinel-2 SR Harmonized, cloud-masked, median composite for target year (e.g. 2023) | Predictors: B2, B3, B4, B8, B11, B12 (blue, green, red, NIR, SWIR1, SWIR2) |
+| **NDVI** | Normalized difference B8/B4 from composite | Predictor |
+| **Slope** | SRTM DEM → `ee.Terrain.slope` | Predictor |
 
-- **GEE Code Editor (JavaScript):** `gee_explore_alabama.js` (paste into Code Editor).
-- **Python (geemap):** `gee_explore_alabama_geemap.py` (run locally with geemap).
+### Output
 
-Both scripts define the Alabama AOI, build a cloud-free composite, add NLCD Tree Canopy, and trigger a small export so you can verify resolution and coverage before implementing the full pipeline.
+- **Product**: Binary wooded map (0 = non-forest, 1 = forest) at **30 m**, for the **composite year** (e.g. 2023).
+- **Extent**: Full Alabama (or a preview tile); export to Drive as GeoTIFF (optionally tiled if full-state export hits limits).
+
+### Novelty vs. using NLCD alone
+
+- **Year**: NLCD 2020/2021 is the latest official release. Our map is for **the composite year** (e.g. 2023), so we get a **temporally updated** wooded map.
+- **Predictors**: We use **our** feature set (Sentinel-2 bands + NDVI + slope) and train an RF; the model transfers NLCD’s forest definition to **new** imagery. Result can differ where cover changed or where spectral/terrain patterns differ from USGS’s NLCD workflow.
+- **Same resolution**: 30 m is preserved for direct comparison with NLCD and state-scale use.
+
+### Where it lives
+
+- **GEE Code Editor (JavaScript):** [gee_alabama_tree_cover_rf.js](gee_alabama_tree_cover_rf.js) — paste into [code.earthengine.google.com](https://code.earthengine.google.com/). Builds composite, samples with NLCD labels, trains RF, classifies, creates export task. Run the export in the Tasks panel for full-state GeoTIFF.
+- **Python (geemap):** [gee_explore_alabama_geemap.py](gee_explore_alabama_geemap.py) — same workflow locally; optional export.
+- **Training/sampling:** [TRAINING_AND_RF_GUIDE.md](TRAINING_AND_RF_GUIDE.md) — how training samples and the RF are created; memory strategy for full-state runs.
