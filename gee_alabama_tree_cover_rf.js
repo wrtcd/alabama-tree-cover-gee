@@ -107,7 +107,7 @@ var forestClasses = ee.Image(0)
 // Option B: 'NAIP_POINTS' (train from manually labeled points you create using `gee_create_naip_label_points.js`)
 var LABEL_MODE = 'NLCD'; // 'NLCD' | 'NAIP_POINTS'
 var NAIP_LABEL_POINTS_ASSET = 'projects/YOUR_PROJECT/assets/alabama_naip_labeled_points'; // required if LABEL_MODE='NAIP_POINTS'
-var NAIP_LABEL_PROPERTY = 'forest_label'; // expected 0/1 in the labeled point asset
+var NAIP_LABEL_PROPERTY = 'forest_label'; // expected 0/1, or "Forest"/"Non-forest" (strings are converted to 1/0)
 
 // ----- 4. Optional: terrain (for pipeline) -----
 var dem = ee.Image('USGS/SRTMGL1_003').clip(alabamaBounds);
@@ -150,8 +150,21 @@ var allSamples;
 if (LABEL_MODE === 'NAIP_POINTS') {
   classProperty = NAIP_LABEL_PROPERTY;
 
+  // Normalize label: "Forest"/1 → 1, "Non-forest"/0 → 0, else null (excluded).
+  function toNumericLabel(f) {
+    var raw = f.get(NAIP_LABEL_PROPERTY);
+    var s = ee.String(raw);
+    var num = ee.Algorithms.If(
+      s.equals('Forest').or(s.equals('1')),
+      1,
+      ee.Algorithms.If(s.equals('Non-forest').or(s.equals('0')), 0, null)
+    );
+    return f.set(NAIP_LABEL_PROPERTY, num);
+  }
+
   var naipPts = ee.FeatureCollection(NAIP_LABEL_POINTS_ASSET)
     .filterBounds(alabamaBounds)
+    .map(toNumericLabel)
     .filter(ee.Filter.neq(NAIP_LABEL_PROPERTY, null));
 
   // Sample predictor bands at the labeled points.
