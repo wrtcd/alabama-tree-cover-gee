@@ -70,6 +70,13 @@ function toDb(img) {
   return ee.Image(10).multiply(img.log10());
 }
 
+// When no S1 scenes exist for the date range, median() returns an image with no bands; use constants.
+function s1EmptyImage(bounds) {
+  var vv = ee.Image.constant(0.01).rename('VV').clip(bounds);
+  var vh = ee.Image.constant(0.01).rename('VH').clip(bounds);
+  return vv.addBands(vh);
+}
+
 function s1SeasonCompositeDb(start, end, prefix) {
   var s1 = ee.ImageCollection('COPERNICUS/S1_GRD')
     .filterBounds(alabamaBounds)
@@ -80,12 +87,16 @@ function s1SeasonCompositeDb(start, end, prefix) {
     .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH'))
     .select(['VV', 'VH']);
 
-  // Median composite then convert to dB for more stable ranges.
-  var lin = s1.median().clip(alabamaBounds);
-  var vvDb = toDb(lin.select('VV')).rename(prefix + 'VV_db');
-  var vhDb = toDb(lin.select('VH')).rename(prefix + 'VH_db');
+  // If collection is empty, median() has no bands and .select('VV') fails; use dummy image.
+  var lin = ee.Image(ee.Algorithms.If(
+    s1.size().gt(0),
+    s1.median().clip(alabamaBounds),
+    s1EmptyImage(alabamaBounds)
+  ));
+  var vvDb = toDb(ee.Image(lin).select('VV')).rename(prefix + 'VV_db');
+  var vhDb = toDb(ee.Image(lin).select('VH')).rename(prefix + 'VH_db');
   var vvMinusVh = vvDb.subtract(vhDb).rename(prefix + 'VVminusVH_db');
-  var vvDivVh = lin.select('VV').divide(lin.select('VH')).rename(prefix + 'VVdivVH_lin');
+  var vvDivVh = ee.Image(lin).select('VV').divide(ee.Image(lin).select('VH')).rename(prefix + 'VVdivVH_lin');
   return ee.Image.cat([vvDb, vhDb, vvMinusVh, vvDivVh]);
 }
 
@@ -107,7 +118,7 @@ var forestClasses = ee.Image(0)
 // Option B: 'NAIP_POINTS' (train from manually labeled points you create using `gee_create_naip_label_points.js`)
 var LABEL_MODE = 'NLCD'; // 'NLCD' | 'NAIP_POINTS'
 var NAIP_LABEL_POINTS_ASSET = 'projects/YOUR_PROJECT/assets/alabama_naip_labeled_points'; // required if LABEL_MODE='NAIP_POINTS'
-var NAIP_LABEL_PROPERTY = 'forest_label'; // expected 0/1, or "Forest"/"Non-forest" (strings are converted to 1/0)
+var NAIP_LABEL_PROPERTY = 'forest_lab';   // QGIS/Shapefile truncates to 10 chars from forest_label; expected 0/1 or "Forest"/"Non-forest"
 
 // ----- 4. Optional: terrain (for pipeline) -----
 var dem = ee.Image('USGS/SRTMGL1_003').clip(alabamaBounds);
