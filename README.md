@@ -12,7 +12,8 @@ State-scale **wooded-area map** for Alabama on **Google Earth Engine**: free dat
 
 **Other scripts**  
 - [gee_rf_accuracy_from_assets.js](gee_rf_accuracy_from_assets.js) — accuracy/kappa from uploaded RF + NLCD assets.  
-- [gee_create_naip_label_points.js](gee_create_naip_label_points.js) — export NAIP label point grid.  
+- [gee_create_naip_label_points.js](gee_create_naip_label_points.js) — export stratified NAIP label point grid (scale up for more training data).  
+- [gee_export_polygon_candidates.js](gee_export_polygon_candidates.js) — export NLCD-based polygon candidates for labeling (one polygon = many training pixels).  
 - [gee_naip_ndvi_timeseries.js](gee_naip_ndvi_timeseries.js) — NDVI timeseries + quality filter for NAIP points.
 
 Start with [PROJECT_SPEC.md](PROJECT_SPEC.md) for the big picture and "What we built"; use [PATH_ANALYSIS.md](PATH_ANALYSIS.md) for implementation details.

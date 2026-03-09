@@ -44,9 +44,10 @@ var coreNonForest = forestMask.eq(0).and(edge.not());
 var SEED = 42;
 var SCALE = 30; // sampling scale; label is manual at NAIP resolution later
 
-var N_CORE_FOREST = 800;
-var N_CORE_NONFOREST = 800;
-var N_EDGE = 800;
+// Increase for more training points; 1500 per stratum → aim 1000+ after labeling + NDVI filter.
+var N_CORE_FOREST = 1500;
+var N_CORE_NONFOREST = 1500;
+var N_EDGE = 1500;
 
 function sampleFromMask(mask, n, seed, subsetName, nlcdHint) {
   var pts = ee.Image(1).updateMask(mask).rename('one').sample({

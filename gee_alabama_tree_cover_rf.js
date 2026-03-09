@@ -113,14 +113,14 @@ var forestClasses = ee.Image(0)
   .where(nlcd.eq(41).or(nlcd.eq(42)).or(nlcd.eq(43)), 1)
   .rename('forest_mask');
 
-// ----- 3b. Label mode (recommended: NAIP-labeled points) -----
-// Option A (default): 'NLCD' (fast baseline, but limited by NLCD quality)
-// Option B: 'NAIP_POINTS' (train from manually labeled points you create using `gee_create_naip_label_points.js`)
-var LABEL_MODE = 'NAIP_POINTS'; // 'NLCD' | 'NAIP_POINTS'
-var NAIP_LABEL_POINTS_ASSET = 'projects/earthengine-441016/assets/alabama_naip_points_filtered_ndvi'; // NDVI quality-filtered points from gee_naip_ndvi_timeseries.js
-var NAIP_LABEL_PROPERTY = 'forest_lab';   // QGIS/Shapefile truncates to 10 chars from forest_label; expected 0/1 or "Forest"/"Non-forest"
-// Suffix for export filenames (so you can tell NAIP vs NLCD runs apart).
-var LABEL_SUFFIX = (LABEL_MODE === 'NAIP_POINTS') ? 'naip' : 'nlcd';
+// ----- 3b. Label mode (recommended: NAIP-labeled points or polygons) -----
+// 'NLCD' | 'NAIP_POINTS' | 'NAIP_POLYGONS'
+var LABEL_MODE = 'NAIP_POINTS';
+var NAIP_LABEL_POINTS_ASSET = 'projects/earthengine-441016/assets/alabama_naip_points_filtered_ndvi'; // from gee_naip_ndvi_timeseries.js
+var NAIP_POLYGONS_ASSET = 'projects/earthengine-441016/assets/alabama_naip_training_polygons';  // polygon FC with forest_label 0/1
+var NAIP_LABEL_PROPERTY = 'forest_lab';   // points: forest_lab; polygons: use forest_label or forest_lab (0/1 or "Forest"/"Non-forest")
+// Suffix for export filenames.
+var LABEL_SUFFIX = (LABEL_MODE === 'NLCD') ? 'nlcd' : 'naip';
 
 // Normalize NAIP label: "Forest"/1 → 1, "Non-forest"/0 → 0, else null (excluded).
 function toNumericLabel(f) {
@@ -188,13 +188,11 @@ var allSamples;
 if (LABEL_MODE === 'NAIP_POINTS') {
   classProperty = NAIP_LABEL_PROPERTY;
 
-  // Drop unlabeled points first so toNumericLabel never sees null.
   var naipPts = ee.FeatureCollection(NAIP_LABEL_POINTS_ASSET)
     .filterBounds(alabamaBounds)
     .filter(ee.Filter.neq(NAIP_LABEL_PROPERTY, null))
     .map(toNumericLabel);
 
-  // Sample predictor bands at the labeled points.
   var sampled = predictorImage.addBands(slope.rename('slope')).sampleRegions({
     collection: naipPts,
     properties: [NAIP_LABEL_PROPERTY],
@@ -203,13 +201,41 @@ if (LABEL_MODE === 'NAIP_POINTS') {
     tileScale: 4
   });
 
-  // Balance classes by limiting to N per class (keeps training stable and fast).
   var N_PER_CLASS = STRATIFIED_POINTS_PER_CLASS;
   var c0 = sampled.filter(ee.Filter.eq(NAIP_LABEL_PROPERTY, 0))
     .randomColumn('r', RF_SEED)
     .sort('r')
     .limit(N_PER_CLASS);
   var c1 = sampled.filter(ee.Filter.eq(NAIP_LABEL_PROPERTY, 1))
+    .randomColumn('r', RF_SEED + 1)
+    .sort('r')
+    .limit(N_PER_CLASS);
+  allSamples = c0.merge(c1);
+
+} else if (LABEL_MODE === 'NAIP_POLYGONS') {
+  // Polygons: one polygon = many pixels. sampleRegions gives one feature per pixel inside.
+  classProperty = NAIP_LABEL_PROPERTY;
+  var polyProp = NAIP_LABEL_PROPERTY;  // use same name; polygon assets often use forest_label
+
+  var polys = ee.FeatureCollection(NAIP_POLYGONS_ASSET)
+    .filterBounds(alabamaBounds)
+    .filter(ee.Filter.neq(polyProp, null))
+    .map(toNumericLabel);
+
+  var sampled = predictorImage.addBands(slope.rename('slope')).sampleRegions({
+    collection: polys,
+    properties: [polyProp],
+    scale: EXPORT_SCALE,
+    geometries: false,
+    tileScale: 4
+  });
+
+  var N_PER_CLASS = STRATIFIED_POINTS_PER_CLASS;
+  var c0 = sampled.filter(ee.Filter.eq(polyProp, 0))
+    .randomColumn('r', RF_SEED)
+    .sort('r')
+    .limit(N_PER_CLASS);
+  var c1 = sampled.filter(ee.Filter.eq(polyProp, 1))
     .randomColumn('r', RF_SEED + 1)
     .sort('r')
     .limit(N_PER_CLASS);

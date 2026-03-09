@@ -6,9 +6,9 @@
  * assets and run this script (sampling + confusion matrix only, typically minutes).
  *
  * Required assets (upload your GeoTIFF exports from Drive):
- * - projects/earthengine-441016/assets/alabama_2023_RF          (RF 0/1 map)
- * - projects/earthengine-441016/assets/alabama_NLCD_2021       (NLCD 0/1 forest mask)
- * If your project ID differs, edit the paths below.
+ * - RF 0/1 map (e.g. alabama_2023_RF or alabama_rf_forest_binary_naip_05_10m)
+ * - NLCD 0/1 forest mask (e.g. alabama_NLCD_2021 or alabama_NLCD_forest_mask_30m)
+ * Set RF_ASSET and NLCD_ASSET below to match your asset IDs.
  *
  * This script: stratified sample → confusion matrix, OA, kappa, producer/consumer accuracy.
  *
@@ -20,14 +20,19 @@
  */
 
 // ----- 1. Load assets -----
+// Your RF binary (0/1) maps — pick one to compare vs NLCD reference.
+var RF_ASSET = 'projects/earthengine-441016/assets/alabama_rf_forest_binary_naip_10m';   // RF trained on NAIP points
+// var RF_ASSET = 'projects/earthengine-441016/assets/alabama_rf_forest_binary_nlcd_10m'; // RF trained on NLCD
+// Reference (truth) for accuracy: NLCD 0/1 forest mask.
+var NLCD_ASSET = 'projects/earthengine-441016/assets/alabama_NLCD_2021';
 
 // RF prediction (0/1 map), uploaded from your GeoTIFF export.
-var rf = ee.Image('projects/earthengine-441016/assets/alabama_2023_RF')
+var rf = ee.Image(RF_ASSET)
   .select(0)
   .rename('rf');
 
 // NLCD-based reference, uploaded from your NLCD GeoTIFF.
-var nlcdRaw = ee.Image('projects/earthengine-441016/assets/alabama_NLCD_2021')
+var nlcdRaw = ee.Image(NLCD_ASSET)
   .select(0);
 
 // ----- 1a. Reference band: choose ONE of the following cases -----
