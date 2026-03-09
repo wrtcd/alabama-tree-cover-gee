@@ -57,6 +57,7 @@ Use this to design and compare paths. **Which** assets and dimensions you combin
 | Kind | Examples (GEE or free, Alabama) | Role they can play |
 |------|--------------------------------|---------------------|
 | Optical | Sentinel-2, Landsat 8/9 | Signal: reflectance, indices, composites. |
+| Radar | Sentinel-1 GRD (VV, VH) | Signal: backscatter; cloud-independent; structure. |
 | Temporal | Same; multi-date composites, phenology metrics | Signal: seasonal/change; can help accuracy and robustness. |
 | Structure / height | GEDI L2A, Global Forest Canopy Height | Signal or target: height, "tall" vs "low". |
 | Existing tree/cover | NLCD Tree Canopy, USFS TCC, land cover | Labels, validation, or proxy targets; high data availability. |
@@ -70,10 +71,10 @@ Use this to design and compare paths. **Which** assets and dimensions you combin
 ## Suggested next steps (order)
 
 1. ~~**Map the fractal**~~: Done — candidate paths and scores are in PATH_ANALYSIS.md.
-2. ~~**Select the optimal path**~~: Done — Path A (Optical + NLCD → RF) selected and justified.
-3. ~~**Explore in GEE**~~: Done — Alabama AOI, composite, NLCD, terrain; small-tile and full-state export supported.
-4. ~~**Implement pipeline**~~: Done — composite → NDVI + slope → sample from NLCD labels → train RF → classify → export (see gee_alabama_tree_cover_rf.js; TRAINING_AND_RF_GUIDE.md).
-5. ~~**Document**~~: Done — PROJECT_SPEC (this file), PATH_ANALYSIS, TRAINING_AND_RF_GUIDE, README.
+2. ~~**Select the optimal path**~~: Done — Path A (Optical + NLCD → RF) selected; implementation evolved to **Optical + Radar + seasonal composites** (see script).
+3. ~~**Explore in GEE**~~: Done — Alabama AOI, seasonal composites (S2 + S1), NLCD, terrain; small-tile and full-state export supported.
+4. ~~**Implement pipeline**~~: Done — seasonal composites (S2 leaf-on/leaf-off + S1) → indices + slope → sample from NLCD or NAIP points (optionally NDVI quality–filtered via gee_naip_ndvi_timeseries.js) → train RF → classify → export (see gee_alabama_tree_cover_rf.js).
+5. ~~**Document**~~: Done — PROJECT_SPEC (this file), PATH_ANALYSIS, PROJECT_BOUNDARY, README.
 
 **Optional follow-ups**: Path C (temporal + NLCD → RF) for more signal; Path B (GEDI) for validation or height product; or re-run pipeline for a different composite year.
 
@@ -93,21 +94,24 @@ The exact path is the one that **best satisfies the optimization criteria** unde
 
 ## What we built (implemented approach)
 
-We implemented **Path A: Optical + NLCD → RF**. Delivered artifact:
+The **current pipeline** in `gee_alabama_tree_cover_rf.js` implements **Optical + Radar + seasonal composites → RF** (evolution from the original Path A). Delivered artifact:
 
-- **Product**: A **wooded-area map** (forest vs non-forest, 0/1) for Alabama at **30 m resolution**, for a **target year** (e.g. 2023) chosen via the composite date range.
-- **Labels**: NLCD land cover (we use 2021) — forest = classes 41, 42, 43 (deciduous, evergreen, mixed); all else = non-forest. No manual labeling.
-- **Predictors**: Sentinel-2 cloud-free composite for the target year (B2, B3, B4, B8, B11, B12), **NDVI**, and **slope** (SRTM). Same 30 m scale as NLCD.
-- **Method**: Random Forest trained in GEE on sampled pixels (labels from NLCD, features from composite + NDVI + slope); then we **classify the full state** using only the target-year imagery and export the result.
+- **Product**: A **wooded-area map** (forest vs non-forest, 0/1) plus **probability** for Alabama at **10 m resolution**, for a **target year** (e.g. 2023). NLCD forest mask is exported at 30 m as baseline reference.
+- **Labels**: NLCD 2021 land cover — forest = classes 41, 42, 43 (deciduous, evergreen, mixed); all else = non-forest. Optional: NAIP-derived points (see `gee_create_naip_label_points.js`) or NDVI quality–filtered points (see `gee_naip_ndvi_timeseries.js`) for higher-quality labels.
+- **Predictors**:
+  - **Optical (Sentinel-2)**: **Seasonal composites** — leaf-on (May–Sep) and leaf-off (Dec–Feb); bands B2–B8, B8A, B11, B12; indices NDVI, NDMI, NBR, RENDVI per season.
+  - **Radar (Sentinel-1)**: **Seasonal composites** (same windows); VV and VH in dB, VV−VH, VV/VH; cloud-independent signal.
+  - **Terrain**: slope (SRTM).
+- **Method**: Random Forest in GEE on stratified samples (NLCD or NAIP labels); classify full state; export probability and binary @ 0.5. Validation: in-script stratified sample or `gee_rf_accuracy_from_assets.js` on uploaded RF + NLCD exports.
 
 **Why this is novel vs. using NLCD alone**
 
-- **Temporal update**: NLCD releases are periodic (e.g. 2020/2021). Our pipeline produces a map for **the composite year** (e.g. 2023), so we get an up-to-date wooded map without waiting for the next NLCD release.
-- **Transfer of labels**: We use NLCD as the **training label source**, then apply a model built on **our** feature set (Sentinel-2 bands + NDVI + slope) to **new** imagery. The output can differ where land cover changed or where our predictors capture different spectral/terrain relationships.
-- **Same resolution**: We keep 30 m so the product is directly comparable to NLCD and suitable for state-scale analysis.
+- **Temporal update**: Map is for the **composite year** (e.g. 2023), not only NLCD’s 2020/2021.
+- **Optical + radar + phenology**: Seasonal composites reduce confusion (e.g. crops vs forest); radar adds structure and all-weather signal.
+- **Transfer of labels**: NLCD (or NAIP points) as **training label source**; model uses **our** feature set on **new** imagery — output can differ where cover changed or spectral/terrain patterns differ.
 
 **Why it's reasonable**
 
-- Labels come from a trusted CONUS reference (NLCD), not invented.
-- Predictors (reflectance, NDVI, slope) are standard and appropriate for forest vs non-forest.
-- Pipeline is reproducible and tunable (year, bands, RF params); full-state export is handled via GEE tasks to avoid memory limits.
+- Labels from a trusted reference (NLCD or NAIP); no manual labeling at scale.
+- Predictors are standard (reflectance, indices, backscatter, slope) and appropriate for forest vs non-forest.
+- Pipeline is reproducible and tunable (year, seasons, RF params); full-state export via GEE tasks; 10 m export for better parcel/edge behavior.

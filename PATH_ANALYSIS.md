@@ -8,7 +8,7 @@ From **PROJECT_SPEC.md** and **PROJECT_BOUNDARY.md**: one root (Alabama state-sc
 
 | Path | Signal | Labels / target | Scale / method | Short name |
 |------|--------|-----------------|----------------|------------|
-| **A** | Optical (Sentinel-2): single cloud-free composite + NDVI + terrain (slope) | NLCD land cover (2021): forest classes 41/42/43 → 0/1 mask | RF in GEE; train on composite + NDVI + slope; predict statewide; 30 m export | Optical + NLCD → RF |
+| **A** | Optical (S2) + radar (S1): seasonal composites (leaf-on/leaf-off) + indices + terrain (slope) | NLCD 2021 (41/42/43 → 1) or NAIP points (optionally NDVI-filtered) | RF in GEE; 10 m export; tiled to Drive | Optical + Radar + NLCD/NAIP → RF |
 | **B** | Optical composite + terrain (DEM, slope) | GEDI L2A (RH98, canopy height) aggregated to grid or as sparse target | RF or regression; GEDI points → 30 m grid or sample-based training | Optical + GEDI height |
 | **C** | Temporal optical: multi-date composites, phenology (e.g. max NDVI, range, seasonality) | NLCD Tree Canopy (or USFS TCC) | RF with temporal + spectral features; same export pattern | Temporal optical + NLCD → RF |
 | **D** | Single cloud-free composite + terrain | NLCD / FIA for validation only; product is index-based (e.g. NDVI threshold) | No RF: threshold + terrain mask; validate with NLCD/FIA | Index-threshold + validation |
@@ -37,45 +37,49 @@ Scale: **1–5** (5 = best). Trade-offs noted in brief.
 
 ---
 
-## 3. Recommended optimal path: **A (Optical + NLCD → RF)**
+## 3. Recommended optimal path: **A (Optical + NLCD → RF)** — implementation evolved to **Optical + Radar + seasonal composites**
 
-**Why path A wins on the criteria that matter most**
+Path A was selected; the **implemented pipeline** in `gee_alabama_tree_cover_rf.js` extends it with **radar (Sentinel-1)** and **seasonal composites** (leaf-on / leaf-off) for both optical and radar. That gives: richer signal (phenology + structure), cloud robustness (S1), and better separation of forest vs crops/grass.
 
-1. **Pipeline & scalability** — Single cloud-free composite + indices → train RF on NLCD-derived labels → predict → tiled export. No GEDI grid aggregation, no multi-date complexity. Scales to full Alabama and is fully GEE-native.
-2. **Accuracy & data availability** — NLCD Tree Canopy is a CONUS product; we can train and validate against it and optionally add FIA. All inputs (Landsat/S2, NLCD) are free and available for Alabama in GEE.
-3. **Optimization** — Composite strategy (e.g. median, percentiles), band set, and indices are tunable; RF hyperparameters can be tuned; path is not ad hoc.
-4. **Speed & efficiency** — One composite per area; moderate compute; time to first result and to full-state export is tractable (hours to days with tiling).
+**Why the chosen path works**
 
-Path **C** is the natural upgrade if we later want higher accuracy and can afford more compute (temporal features). Path **B** is best considered for validation (GEDI vs. map) or a second product (height), not as the first statewide label source. Path **D** is useful as a fast sanity check or baseline, not as the primary chosen path.
+1. **Pipeline & scalability** — Seasonal composites (S2 + S1) → indices + slope → train RF on NLCD (or NAIP points) → predict → tiled export. Scales to full Alabama; GEE-native.
+2. **Accuracy & data availability** — NLCD (or optional NAIP points) as labels; S2 + S1 + terrain all free in GEE for Alabama.
+3. **Optimization** — Seasonal strategy, band set, indices, and RF are tunable; radar adds structure and all-weather signal.
+4. **Speed & efficiency** — Bounded composites and exports; full-state export tractable via GEE tasks (hours to days with tiling).
+
+Path **C** (temporal-only optical) is partly absorbed by seasonal composites. Path **B** (GEDI) remains an option for validation or height product. Path **D** is a fast baseline. **Source of truth for the current pipeline**: [gee_alabama_tree_cover_rf.js](gee_alabama_tree_cover_rf.js).
 
 ---
 
-## 4. What we implemented (Path A)
+## 4. What we implemented (Path A+)
 
-We built the full Path A pipeline and use it to produce a **wooded-area map** for Alabama.
+We built the full pipeline: **Optical + Radar + seasonal composites → RF**, producing a **wooded-area map** for Alabama at **10 m**.
 
 ### Inputs
 
 | Input | Source | Role |
 |-------|--------|------|
-| **Labels** | NLCD 2021 land cover — classes 41, 42, 43 → forest (1); all else → non-forest (0) | Training target (no manual labeling) |
-| **Optical** | Sentinel-2 SR Harmonized, cloud-masked, median composite for target year (e.g. 2023) | Predictors: B2, B3, B4, B8, B11, B12 (blue, green, red, NIR, SWIR1, SWIR2) |
-| **NDVI** | Normalized difference B8/B4 from composite | Predictor |
-| **Slope** | SRTM DEM → `ee.Terrain.slope` | Predictor |
+| **Labels** | NLCD 2021 (classes 41, 42, 43 → forest) or NAIP-derived points (manual 0/1; optionally NDVI quality–filtered via `gee_naip_ndvi_timeseries.js`) | Training target (no manual labeling at scale for NLCD; optional NAIP labeling for higher accuracy) |
+| **Optical** | Sentinel-2 SR Harmonized: **seasonal composites** — leaf-on (May–Sep) and leaf-off (Dec–Feb); bands B2–B8, B8A, B11, B12; indices NDVI, NDMI, NBR, RENDVI per season | Predictors |
+| **Radar** | Sentinel-1 GRD: same seasonal windows; VV and VH in dB, VV−VH, VV/VH | Predictors (cloud-independent) |
+| **Terrain** | SRTM → slope | Predictor |
 
 ### Output
 
-- **Product**: Binary wooded map (0 = non-forest, 1 = forest) at **30 m**, for the **composite year** (e.g. 2023).
-- **Extent**: Full Alabama (or a preview tile); export to Drive as GeoTIFF (optionally tiled if full-state export hits limits).
+- **Product**: (1) **Probability** of forest, (2) **binary** forest/non-forest @ 0.5, (3) NLCD forest mask (30 m) as baseline — all for the **composite year** (e.g. 2023).
+- **Resolution**: **10 m** for RF outputs; 30 m for NLCD baseline.
+- **Extent**: Full Alabama (or preview tile); export to Drive as GeoTIFF via GEE Tasks.
 
 ### Novelty vs. using NLCD alone
 
-- **Year**: NLCD 2020/2021 is the latest official release. Our map is for **the composite year** (e.g. 2023), so we get a **temporally updated** wooded map.
-- **Predictors**: We use **our** feature set (Sentinel-2 bands + NDVI + slope) and train an RF; the model transfers NLCD’s forest definition to **new** imagery. Result can differ where cover changed or where spectral/terrain patterns differ from USGS’s NLCD workflow.
-- **Same resolution**: 30 m is preserved for direct comparison with NLCD and state-scale use.
+- **Temporal**: Map is for the **composite year** (e.g. 2023), not only NLCD 2020/2021.
+- **Signal**: Seasonal composites + radar reduce confusion (crops/grass vs forest); our feature set differs from USGS NLCD workflow.
+- **Labels**: NLCD (or NAIP points) used as **training source**; model transfers to **new** imagery — output can differ where cover changed or patterns differ.
 
 ### Where it lives
 
-- **GEE Code Editor (JavaScript):** [gee_alabama_tree_cover_rf.js](gee_alabama_tree_cover_rf.js) — paste into [code.earthengine.google.com](https://code.earthengine.google.com/). Builds composite, samples with NLCD labels, trains RF, classifies, creates export task. Run the export in the Tasks panel for full-state GeoTIFF.
-- **Python (geemap):** [gee_explore_alabama_geemap.py](gee_explore_alabama_geemap.py) — same workflow locally; optional export.
-- **Training/sampling:** [TRAINING_AND_RF_GUIDE.md](TRAINING_AND_RF_GUIDE.md) — how training samples and the RF are created; memory strategy for full-state runs.
+- **Main pipeline:** [gee_alabama_tree_cover_rf.js](gee_alabama_tree_cover_rf.js) — **source of truth**. Paste into [code.earthengine.google.com](https://code.earthengine.google.com/); run export tasks in Tasks panel.
+- **Accuracy from exports:** [gee_rf_accuracy_from_assets.js](gee_rf_accuracy_from_assets.js) — upload RF + NLCD GeoTIFFs as assets; multi-seed sampling, accuracy/kappa.
+- **NAIP labels:** [gee_create_naip_label_points.js](gee_create_naip_label_points.js) — export point grid for manual labeling; [gee_naip_ndvi_timeseries.js](gee_naip_ndvi_timeseries.js) — NDVI timeseries + quality filter for NAIP points.
+- **Python (geemap):** [gee_explore_alabama_geemap.py](gee_explore_alabama_geemap.py) — exploratory workflow; optional export.

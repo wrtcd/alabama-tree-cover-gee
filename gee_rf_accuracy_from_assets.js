@@ -1,28 +1,22 @@
 /**
  * Alabama RF vs NLCD accuracy from uploaded assets.
  *
- * Use when you have:
+ * RECOMMENDED: Fastest way to get accuracy after your long RF export run (~2+ hr).
+ * No need to re-run the main pipeline; just upload the two exported rasters as
+ * assets and run this script (sampling + confusion matrix only, typically minutes).
+ *
+ * Required assets (upload your GeoTIFF exports from Drive):
  * - projects/earthengine-441016/assets/alabama_2023_RF          (RF 0/1 map)
- * - projects/earthengine-441016/assets/alabama_NLCD_2021       (NLCD-based reference)
+ * - projects/earthengine-441016/assets/alabama_NLCD_2021       (NLCD 0/1 forest mask)
+ * If your project ID differs, edit the paths below.
  *
- * This script:
- * - loads both images,
- * - stacks them,
- * - draws a stratified (class-balanced) sample of pixels over Alabama,
- * - computes a confusion matrix, overall accuracy, kappa, and per-class accuracies.
- *
- * MEMORY STRATEGY:
- * - We NEVER run reduceRegion over the full image.
- * - We only use .sample(...) on a manageable number of pixels (e.g. 50k),
- *   which keeps memory usage and runtime within safe bounds.
+ * This script: stratified sample → confusion matrix, OA, kappa, producer/consumer accuracy.
  *
  * How to use:
- * 1. Paste this whole script into a new Code Editor script.
- * 2. If your alabama_NLCD_2021 asset is already a 0/1 forest mask (1 = forest, 0 = non-forest),
- *    leave the "CASE 1" block active.
- * 3. If alabama_NLCD_2021 still has NLCD landcover classes (41/42/43 = forest),
- *    comment CASE 1 and uncomment CASE 2.
- * 4. Click Run and read the confusion matrix and accuracy metrics in the Console.
+ * 1. In GEE: Assets → New → Image → upload RF GeoTIFF (binary 0/1) and NLCD mask GeoTIFF.
+ * 2. Paste this script into Code Editor; fix asset paths (project ID, asset names) if needed.
+ * 3. If NLCD asset is raw landcover (41/42/43), use CASE 2; if already 0/1 mask, use CASE 1.
+ * 4. Run → read metrics in Console; optionally uncomment Export.table.toDrive for CSV.
  */
 
 // ----- 1. Load assets -----

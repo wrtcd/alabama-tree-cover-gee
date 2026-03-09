@@ -116,9 +116,36 @@ var forestClasses = ee.Image(0)
 // ----- 3b. Label mode (recommended: NAIP-labeled points) -----
 // Option A (default): 'NLCD' (fast baseline, but limited by NLCD quality)
 // Option B: 'NAIP_POINTS' (train from manually labeled points you create using `gee_create_naip_label_points.js`)
-var LABEL_MODE = 'NLCD'; // 'NLCD' | 'NAIP_POINTS'
-var NAIP_LABEL_POINTS_ASSET = 'projects/YOUR_PROJECT/assets/alabama_naip_labeled_points'; // required if LABEL_MODE='NAIP_POINTS'
+var LABEL_MODE = 'NAIP_POINTS'; // 'NLCD' | 'NAIP_POINTS'
+var NAIP_LABEL_POINTS_ASSET = 'projects/earthengine-441016/assets/alabama_naip_points_filtered_ndvi'; // NDVI quality-filtered points from gee_naip_ndvi_timeseries.js
 var NAIP_LABEL_PROPERTY = 'forest_lab';   // QGIS/Shapefile truncates to 10 chars from forest_label; expected 0/1 or "Forest"/"Non-forest"
+// Suffix for export filenames (so you can tell NAIP vs NLCD runs apart).
+var LABEL_SUFFIX = (LABEL_MODE === 'NAIP_POINTS') ? 'naip' : 'nlcd';
+
+// Normalize NAIP label: "Forest"/1 → 1, "Non-forest"/0 → 0, else null (excluded).
+function toNumericLabel(f) {
+  var raw = f.get(NAIP_LABEL_PROPERTY);
+  var s = ee.String(raw);
+  // Nested conditionals (no .or) to avoid client-side JS errors.
+  var num = ee.Algorithms.If(
+    s.equals('Forest'),
+    1,
+    ee.Algorithms.If(
+      s.equals('1'),
+      1,
+      ee.Algorithms.If(
+        s.equals('Non-forest'),
+        0,
+        ee.Algorithms.If(
+          s.equals('0'),
+          0,
+          null
+        )
+      )
+    )
+  );
+  return f.set(NAIP_LABEL_PROPERTY, num);
+}
 
 // ----- 4. Optional: terrain (for pipeline) -----
 var dem = ee.Image('USGS/SRTMGL1_003').clip(alabamaBounds);
@@ -145,8 +172,8 @@ var RF_NUM_TREES = 300;
 var RF_VARS_PER_SPLIT = null; // null lets EE choose sqrt(#features); set a number to tune.
 // Keep modest to avoid Code Editor memory limits. Increase gradually if stable.
 var STRATIFIED_POINTS_PER_CLASS = 2000; // total samples ~ 2 * this (for 0/1)
-// Keep evaluation out of this script to minimize in-session memory use.
-// Use `gee_rf_accuracy_from_assets.js` (or a dedicated point-based validation workflow) for metrics.
+// Accuracy: keep false to avoid extra memory/runtime on the long export run.
+// Get metrics via gee_rf_accuracy_from_assets.js after uploading your RF + NLCD exports as assets (fast).
 var RUN_IN_SCRIPT_EVAL = false;
 
 // Add terrain band (upsampled as needed).
@@ -161,22 +188,11 @@ var allSamples;
 if (LABEL_MODE === 'NAIP_POINTS') {
   classProperty = NAIP_LABEL_PROPERTY;
 
-  // Normalize label: "Forest"/1 → 1, "Non-forest"/0 → 0, else null (excluded).
-  function toNumericLabel(f) {
-    var raw = f.get(NAIP_LABEL_PROPERTY);
-    var s = ee.String(raw);
-    var num = ee.Algorithms.If(
-      s.equals('Forest').or(s.equals('1')),
-      1,
-      ee.Algorithms.If(s.equals('Non-forest').or(s.equals('0')), 0, null)
-    );
-    return f.set(NAIP_LABEL_PROPERTY, num);
-  }
-
+  // Drop unlabeled points first so toNumericLabel never sees null.
   var naipPts = ee.FeatureCollection(NAIP_LABEL_POINTS_ASSET)
     .filterBounds(alabamaBounds)
-    .map(toNumericLabel)
-    .filter(ee.Filter.neq(NAIP_LABEL_PROPERTY, null));
+    .filter(ee.Filter.neq(NAIP_LABEL_PROPERTY, null))
+    .map(toNumericLabel);
 
   // Sample predictor bands at the labeled points.
   var sampled = predictorImage.addBands(slope.rename('slope')).sampleRegions({
@@ -235,20 +251,26 @@ var rfClassified = predictorImage.classify(rfClassifier).rename('forest_rf');
 var pForest = predictorImage.classify(rfProbClassifier).rename('p_forest');
 var rfBinary = pForest.gte(0.5).rename('forest_rf_05');
 
-// Optional lightweight sanity check (keep off by default).
+// Optional: print accuracy vs NLCD (stratified sample over Alabama; no asset upload).
 if (RUN_IN_SCRIPT_EVAL) {
-  var sanity = allSamples.randomColumn('rnd', RF_SEED);
-  var train = sanity.filter(ee.Filter.lt('rnd', 0.8));
-  var test = sanity.filter(ee.Filter.gte('rnd', 0.8));
-  var clf = rfBase.train({
-    features: train,
-    classProperty: classProperty,
-    inputProperties: predictorBands
+  var evalStack = rfBinary.rename('rf').addBands(forestClasses.rename('ref')).clip(alabamaBounds);
+  var evalSamples = evalStack.stratifiedSample({
+    numPoints: 3000,
+    classBand: 'ref',
+    region: alabamaBounds,
+    scale: LABEL_SCALE,
+    seed: RF_SEED + 999,
+    geometries: false,
+    tileScale: 4
   });
-  var cm = test.classify(clf).errorMatrix(classProperty, 'classification');
-  print('Sanity split (not spatial) — sample size:', allSamples.size());
-  print('Sanity OA:', cm.accuracy());
-  print('Sanity kappa:', cm.kappa());
+  var cm = evalSamples.errorMatrix('ref', 'rf');
+  print('--- RF vs NLCD accuracy (stratified sample) ---');
+  print('Sample size:', evalSamples.size());
+  print('Confusion matrix (rows=ref NLCD, cols=pred RF):', cm);
+  print('Overall accuracy:', cm.accuracy());
+  print('Kappa:', cm.kappa());
+  print('Producer accuracy (by ref class):', cm.producersAccuracy());
+  print('Consumer accuracy (by pred class):', cm.consumersAccuracy());
 }
 
 // Avoid "User memory limit exceeded": do not add full-state RF layer to the map.
@@ -258,10 +280,10 @@ if (!USE_FULL_STATE_REGION) {
 }
 
 // ----- 8. Exports -----
-// Export probability + thresholded (binary) forest map. Full-state run happens when you execute the tasks in the Tasks panel (batch).
+// Export probability + thresholded (binary) forest map. Filenames include LABEL_SUFFIX (naip/nlcd) so you can compare runs.
 Export.image.toDrive({
   image: pForest.toFloat().clip(alabama),
-  description: USE_FULL_STATE_REGION ? 'alabama_rf_pForest_10m' : 'alabama_rf_pForest_tile_10m',
+  description: USE_FULL_STATE_REGION ? 'alabama_rf_pForest_' + LABEL_SUFFIX + '_10m' : 'alabama_rf_pForest_' + LABEL_SUFFIX + '_tile_10m',
   folder: 'alabama_tree_cover_rf_10m',
   region: exportRegion,
   scale: EXPORT_SCALE,
@@ -272,7 +294,7 @@ Export.image.toDrive({
 
 Export.image.toDrive({
   image: rfBinary.toFloat().clip(alabama),
-  description: USE_FULL_STATE_REGION ? 'alabama_rf_forest_binary_05_10m' : 'alabama_rf_forest_binary_05_tile_10m',
+  description: USE_FULL_STATE_REGION ? 'alabama_rf_forest_binary_05_' + LABEL_SUFFIX + '_10m' : 'alabama_rf_forest_binary_05_' + LABEL_SUFFIX + '_tile_10m',
   folder: 'alabama_tree_cover_rf_10m',
   region: exportRegion,
   scale: EXPORT_SCALE,
@@ -295,4 +317,4 @@ Export.image.toDrive({
   formatOptions: { cloudOptimized: true }
 });
 
-print('Done. Run export tasks: (1) p_forest (10 m), (2) binary@0.5 (10 m), (3) NLCD forest mask baseline (30 m).');
+print('Done. Run export tasks: (1) p_forest ' + LABEL_SUFFIX + ' (10 m), (2) binary@0.5 ' + LABEL_SUFFIX + ' (10 m), (3) NLCD forest mask baseline (30 m).');
