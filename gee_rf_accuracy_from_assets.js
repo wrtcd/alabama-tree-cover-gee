@@ -27,19 +27,26 @@ var RF_ASSET = 'projects/earthengine-441016/assets/alabama_rf_forest_binary_naip
 var NLCD_ASSET = 'projects/earthengine-441016/assets/alabama_NLCD_2021';
 
 // RF prediction (0/1 map), uploaded from your GeoTIFF export.
+// Cast to integer so it's a proper 0/1 band.
 var rf = ee.Image(RF_ASSET)
   .select(0)
+  .round()
+  .toInt()
   .rename('rf');
 
 // NLCD-based reference, uploaded from your NLCD GeoTIFF.
+// We will cast to integer in the CASE block below.
 var nlcdRaw = ee.Image(NLCD_ASSET)
   .select(0);
 
 // ----- 1a. Reference band: choose ONE of the following cases -----
 
 // CASE 1: alabama_NLCD_2021 is ALREADY a 0/1 forest mask (1 = forest, 0 = non-forest).
-//         In this case we only rename the band.
-var ref = nlcdRaw.rename('ref');
+//         Cast to integer so it can be used as classBand in stratifiedSample.
+var ref = nlcdRaw
+  .round()
+  .toInt()
+  .rename('ref');
 
 // CASE 2: alabama_NLCD_2021 still has NLCD landcover classes.
 //         If you know this is true, comment CASE 1 above and uncomment this block.
@@ -51,6 +58,7 @@ var ref = nlcdRaw.rename('ref');
 //       .or(nlcdRaw.eq(43)),
 //     1
 //   )
+//   .toInt()
 //   .rename('ref');
 
 
@@ -126,12 +134,13 @@ var meanKappa = metricsFC.aggregate_mean('kappa');
 print('Mean overall accuracy (all seeds):', meanAcc);
 print('Mean kappa (all seeds):', meanKappa);
 
-// Optional: export the per-seed metrics to Drive as CSV (uncomment to use).
-// Export.table.toDrive({
-//   collection: metricsFC,
-//   description: 'alabama_rf_vs_nlcd_accuracy_multi_seed',
-//   fileFormat: 'CSV'
-// });
+// Optional: export the per-seed metrics to Drive as CSV.
+Export.table.toDrive({
+  collection: metricsFC,
+  description: 'alabama_rf_vs_nlcd_accuracy_multi_seed',
+  folder: 'alabama_tree_cover_rf_10m',
+  fileFormat: 'CSV'
+});
 
 print('Done. Per-seed metrics and mean accuracy/kappa are printed above. Adjust POINTS_PER_CLASS, seeds, or CASE 1/CASE 2 if needed.');
 

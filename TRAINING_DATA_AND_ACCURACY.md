@@ -131,6 +131,19 @@ Edit the two lines at the top of `gee_rf_accuracy_from_assets.js` so they point 
 
 ---
 
+## Accuracy results (vs NLCD 0/1 reference)
+
+Stratified sampling over Alabama; multiple seeds (42, 1337, 2025); ~8,000 points per class per seed. Reference: NLCD forest mask (0/1). Metrics from `gee_rf_accuracy_from_assets.js` (export to Drive for full per-seed CSV).
+
+| Model | Mean overall accuracy | Mean kappa |
+|-------|------------------------|-----------|
+| **RF trained on NAIP points** (binary @ 0.5, 10 m) | 0.742 | 0.483 |
+| RF trained on NLCD (binary @ 0.5, 10 m) | — | — *(run when asset ready)* |
+
+*Note:* These metrics compare the RF output to NLCD as “truth.” NLCD itself has noise at 30 m; some disagreement may reflect RF improving on NLCD. Use producer/consumer accuracy and visual checks to interpret class-wise performance.
+
+---
+
 ## Summary
 
 | Topic | Answer |
