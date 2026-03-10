@@ -4,16 +4,16 @@ Quality training data is the heart of the model. You’re not fixed on points—
 
 ---
 
-## 0. One source per run (no mix yet)
+## 0. One source per run; use both in your workflow
 
-In **`gee_alabama_tree_cover_rf.js`** you set **one** `LABEL_MODE`: `'NLCD'`, `'NAIP_POINTS'`, or `'NAIP_POLYGONS'`. Each run uses **that** source only. We do **not** mix points and polygons in a single training run yet—you either train from points, or from polygons, or from NLCD.
+In **`gee_alabama_tree_cover_rf.js`** you set **one** `LABEL_MODE` per run: `'NLCD'`, `'NAIP_POINTS'`, or `'NAIP_POLYGONS'`. We do **not** mix points and polygons in a single training run yet—you either train from points, or from polygons, or from NLCD.
 
-**Why both point and polygon scripts exist:** They are **two ways** to get more/better training data. You choose the workflow that fits you (or run both in separate experiments and compare):
+**Recommendation: use a combination of points and polygons** in your overall workflow. For this scale (state of Alabama), training data should be in the **order of 1,000s** of quality samples. Run the pipeline with points in one experiment and polygons in another (or alternate); a future “combined” mode could merge both in one run.
 
-- **Points (scaled up):** Many labels, one training pixel per label. Good when you want to click quickly and cover edges/mixed areas; you scale by increasing the number of points.
-- **Polygons (candidates or hand-drawn):** Fewer labels, many training pixels per label (every pixel inside the polygon). Good when you want to label big homogeneous patches once and get hundreds of samples per polygon.
+- **Points (scaled up):** Many labels, one training pixel per label. Good for edges/mixed areas and quick coverage; scale by increasing the number of points.
+- **Polygons (candidates or hand-drawn):** Fewer labels, many training pixels per label. Good for large homogeneous patches (pure forest, pure non-forest).
 
-You don’t have to use both. Use points **or** polygons for a given run; the “hybrid” idea (points + polygons in one run) would require a fourth mode that merges both—not implemented yet.
+Use both **types** in your workflow—polygons for big homogeneous areas, points for edges and diversity. Focus on **procuring quality data**.
 
 ---
 
@@ -53,11 +53,13 @@ You don’t have to use both. Use points **or** polygons for a given run; the �
 
 ---
 
-## 3. Quality over raw count
+## 3. Quality over raw count; scale in the 1,000s
 
+- **Focus:** Procuring **quality** training data is the priority. Training data for this scale should be in the **order of 1,000s** (e.g. 1,000+ quality points and/or polygon-derived pixels).
 - **Stratify:** Don’t sample only “easy” interior forest/non-forest. Include **edges** (already in the point design) and, if possible, different **ecoregions** or land-use types so the model sees the full variety.
 - **NDVI filter (points):** Keep using `gee_naip_ndvi_timeseries.js` to drop points with very low NDVI (barren/water/cloud) so mislabels don’t dilute the model.
 - **Polygon quality:** Prefer **compact, homogeneous** polygons. One big polygon that crosses forest and field is one label but many wrong pixels; split it or use points there instead.
+- **Validation:** Hold out a portion of training data for validation/testing, and consider a hold-out **region or strip** of the study area; use **FIA plots/boundaries** (forest/non-forest) where available for independent validation.
 
 ---
 

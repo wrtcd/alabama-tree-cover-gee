@@ -1,6 +1,6 @@
 # Alabama Tree Cover / Canopy Mapping (GEE)
 
-State-scale **wooded-area map** for Alabama on **Google Earth Engine**: free data, scalable pipeline, **10 m** export. We use **Sentinel-2 + Sentinel-1 seasonal composites** (leaf-on/leaf-off), indices, and slope as predictors, with NLCD or **NAIP-derived points** (optionally NDVI quality–filtered) as labels, to produce a **temporally updated** forest/non-forest map (e.g. 2023). **Source of truth**: [gee_alabama_tree_cover_rf.js](gee_alabama_tree_cover_rf.js).
+State-scale **wooded-area map** for Alabama on **Google Earth Engine**: free data, scalable pipeline, **10 m** export. We use **Sentinel-2 + Sentinel-1 seasonal composites** (leaf-on/leaf-off), indices, and slope as predictors, with NLCD or **NAIP-derived points** (optionally NDVI quality–filtered) as labels, to produce a **temporally updated** forest/non-forest map (e.g. 2025). **Source of truth**: [gee_alabama_tree_cover_rf.js](gee_alabama_tree_cover_rf.js).
 
 - **Scope**: [SCOPE.md](SCOPE.md) — what we do, in/out of scope, key artifacts.
 - **Training & accuracy**: [TRAINING_DATA_AND_ACCURACY.md](TRAINING_DATA_AND_ACCURACY.md), [TRAINING_DATA_STRATEGY.md](TRAINING_DATA_STRATEGY.md).

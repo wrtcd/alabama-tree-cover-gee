@@ -33,7 +33,7 @@ So: **~700** = stratified design (core forest, core non-forest, edge) with a cap
 
 **Script:** `gee_naip_ndvi_timeseries.js`
 
-- For each NAIP point we get a **12‑month Sentinel‑2 NDVI timeseries** (2023) and compute `mean_ndvi`, `min_ndvi`, `max_ndvi`, `ndvi_amplitude`.
+- For each NAIP point we get a **12‑month Sentinel‑2 NDVI timeseries** (e.g. 2023 or match your target year) and compute `mean_ndvi`, `min_ndvi`, `max_ndvi`, `ndvi_amplitude`.
 - **Quality filter** (optional but recommended):
   - `min_ndvi >= 0.20`  (drop very barren/water)
   - `mean_ndvi >= 0.25` (drop persistently low vegetation)
@@ -55,22 +55,21 @@ So **~449** = the subset of your **labeled** points that pass the NDVI quality f
 
 **Practical recommendation:**
 
-- **Increase the design size** in `gee_create_naip_label_points.js`: e.g. try **1,500 or 2,000 per stratum** (if GEE and your labeling capacity allow) so that after labeling and NDVI filtering you still have **1,000+** points.
+- For **state-scale** (Alabama), training data should be in the **order of 1,000s** of quality samples. **Increase the design size** in `gee_create_naip_label_points.js`: e.g. try **1,500 or 2,000 per stratum** (if GEE and your labeling capacity allow) so that after labeling and NDVI filtering you still have **1,000+** points.
 - **Keep NDVI filtering**; it improves quality. Optionally relax thresholds slightly (e.g. `min_ndvi >= 0.15`, `mean_ndvi >= 0.20`) if you are losing too many good labels.
 - **Balance classes:** Aim for similar number of forest and non-forest after filtering (the RF script already balances by capping per class with `STRATIFIED_POINTS_PER_CLASS`).
+- **Validation:** Hold out a **portion of the original training data** (e.g. 20%) for validation/testing, and consider holding out a **strip or region** of the study area for spatial validation. Where available, **FIA plots and boundaries** (forest/non-forest) can be used for independent validation.
 
 ---
 
-## 4. Why points instead of polygons?
+## 4. Why points, polygons, or both?
 
-- **Constraint:** We explicitly avoid “manual polygon labeling at scale” (see PROJECT_SPEC and PROJECT_BOUNDARY). Drawing enough polygons to cover Alabama would be very costly.
-- **Efficiency:** Points are fast to label (one click per location in QGIS with NAIP), so we can get **hundreds to thousands** of labels in reasonable time. Polygons would give more pixels per label but far fewer labels for the same effort.
-- **Existing products:** For a **state-scale** baseline we use **NLCD** (or NAIP-derived points) as the **source of labels**. NLCD is already polygon/raster; we either:
-  - sample **points** from NLCD (no manual drawing), or  
-  - use **points** you label from NAIP to get **better than NLCD** where you need it.
-- **RF in GEE:** The classifier needs **per-pixel** training rows. Points give one row per point; polygons would require rasterizing and then sampling pixels, which we can do but adds complexity. So points are a simple, scalable way to get training pixels.
+- **NLCD** is 30 m and not the most accurate; it is kept as a **baseline option**. For better accuracy, use **NAIP-derived** (or hybrid NAIP + Google Satellite / other reference) labels. **Manual labeling is fine**; the focus is on **quality** training data.
+- **Points:** Fast to label (one click per location in QGIS with NAIP/high-res), so we can get **hundreds to thousands** of labels. Good for edges and mixed areas.
+- **Polygons:** Fewer labels but many pixels per label; good for large homogeneous patches. Drawing many polygons at state scale is more effort, but **a combination of points and polygons** is recommended—points for diversity/edges, polygons for efficient coverage of pure forest/non-forest.
+- **RF in GEE:** The classifier needs **per-pixel** training rows. Points give one row per point; polygons are rasterized and sampled. The script supports **one label source per run** (NLCD, NAIP_POINTS, or NAIP_POLYGONS); use both in your workflow (e.g. separate runs or future combined mode) to maximize quality and coverage.
 
-**Summary:** Points = feasible, scalable, and aligned with “no manual polygon labeling at scale.” For higher accuracy, the main lever is **more quality points** (and optionally polygon-based validation later), not necessarily switching the whole training set to polygons.
+**Summary:** Use a **combination of points and polygons** where practical. Training data should be in the **order of 1,000s** for this scale. Focus on **procuring quality data**; manual labeling is in scope.
 
 ---
 
@@ -118,7 +117,7 @@ So **~449** = the subset of your **labeled** points that pass the NDVI quality f
 
 1. **RF binary (0/1) map**  
    Your classification at 0.5 threshold (e.g. the export named like `alabama_rf_forest_binary_naip_05_10m`).  
-   In the script this is currently hard-coded as `alabama_2023_RF`. If your asset has a different name, update the script (see below).
+   In the script this is currently hard-coded (e.g. `alabama_2023_RF` or your year). If your asset has a different name, update the script (see below).
 
 2. **NLCD-based reference (0/1)**  
    The NLCD forest mask (41/42/43 → 1, else 0), e.g. `alabama_NLCD_forest_mask_30m` or similar.  
@@ -128,6 +127,14 @@ So **~449** = the subset of your **labeled** points that pass the NDVI quality f
 
 **Updating the script for your asset names:**  
 Edit the two lines at the top of `gee_rf_accuracy_from_assets.js` so they point to your actual asset IDs (e.g. `alabama_rf_forest_binary_naip_05_10m` and your NLCD asset). Once those two uploads succeed and the paths are correct, you can run the accuracy script.
+
+---
+
+## 7. Validation design: hold-out and FIA
+
+- **Hold out a portion of training data:** Reserve a fraction (e.g. 20%) of your labeled points/polygons for validation/testing so accuracy is not evaluated on the same data used to train the model.
+- **Hold out a region or strip:** Reserve a **section, strip, or region** of the study area (e.g. a county or a north–south strip) for **spatial** validation; train on the rest and evaluate on the held-out geography to assess generalization.
+- **FIA plots and boundaries:** Where available, use **FIA (Forest Inventory and Analysis) plots and boundaries** (forest vs non-forest) as an **independent** validation set. FIA provides field-based reference that is not derived from the same imagery or NLCD used in training.
 
 ---
 
@@ -148,11 +155,12 @@ Stratified sampling over Alabama; multiple seeds (42, 1337, 2025); ~8,000 points
 
 | Topic | Answer |
 |-------|--------|
-| NAIP points | Stratified sample (core forest, core non-forest, edge), 800 per stratum design → often ~700 after sampling; you label in QGIS. |
+| NAIP points | Stratified sample (core forest, core non-forest, edge), 800+ per stratum design; you label in QGIS (manual labeling is fine). |
 | ~449 | Subset that passes NDVI quality filter (min/mean NDVI thresholds) to remove bad/non-veg points. |
-| Sample size | 449 is usable but low for state-scale; aim for 1,000+ quality points (increase stratum size and/or relax NDVI slightly). |
-| Points vs polygons | Points = feasible and scalable; polygons at state scale = out of scope; more/better points is the main lever. |
+| Sample size | For state-scale, training data should be in the **order of 1,000s**; aim for 1,000+ quality points (increase stratum size and/or relax NDVI slightly). |
+| Points vs polygons | Use a **combination**: points for edges/diversity, polygons for homogeneous patches; focus on **quality** data. |
+| Validation | Hold out a portion of training data and/or a region/strip of the study area; use **FIA plots/boundaries** where available. |
 | GEE upload error | Use asset ID without leading `/`; shorten name; create folder first; check file. |
 | Accuracy rasters | Only **binary RF** + **NLCD 0/1**; **no probability** needed for the current accuracy script. |
 
-Good training data = good model; focusing on **more quality NAIP points** (and optional validation with polygons) is the right direction.
+Good training data = good model; focus on **procuring quality data** (points + polygons, 1,000s scale) and validation design.
