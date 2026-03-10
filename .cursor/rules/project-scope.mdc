@@ -1,7 +1,7 @@
 ---
-description: Alabama tree cover on GEE; scope and in/out of scope from SCOPE.md.
+description: Alabama tree cover on GEE; 10 m, 2025. Scope from SCOPE.md; direction from DIRECTION.md.
 globs:
 alwaysApply: true
 ---
 
-Use SCOPE.md for project scope. It defines what this project does, what is in scope (GEE, Alabama, 10 m export, RF, NLCD/NAIP labels, validation) and what is out of scope (PlanetScope, per-scene U-Net, manual scene downloads, small-area-only outputs). Do not suggest approaches that are out of scope. When suggesting changes or new approaches, align with SCOPE.md and the key artifacts listed there.
+Use SCOPE.md for scope (in/out); DIRECTION.md for framework, architecture, sample collection; TRAINING.md for training and accuracy. Align suggestions with these. Key: 10 m, 2025, RF, quality labels (points + polygons), validation (hold-out, FIA).

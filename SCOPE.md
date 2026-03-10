@@ -48,6 +48,6 @@ Single source of truth for what this project does and what is in or out of scope
 
 ## Supporting docs
 
-- [TRAINING_DATA_AND_ACCURACY.md](TRAINING_DATA_AND_ACCURACY.md) — NAIP points FAQ, NDVI filtering, accuracy metrics, GEE upload tips.
-- [TRAINING_DATA_STRATEGY.md](TRAINING_DATA_STRATEGY.md) — Points vs polygons, recommended workflow, quality guidance.
+- [DIRECTION.md](DIRECTION.md) — Framework, architecture, sample collection (10 m, 2025).
+- [TRAINING.md](TRAINING.md) — Training data, validation, accuracy results, GEE tips.
 
