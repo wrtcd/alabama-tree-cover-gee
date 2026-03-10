@@ -1,5 +1,6 @@
 /**
  * Export candidate polygons for manual labeling (forest / non-forest).
+ * Scope: SCOPE.md.
  *
  * Two options:
  * A) NLCD-based candidates: random tiles over Alabama with dominant class (forest vs non-forest).

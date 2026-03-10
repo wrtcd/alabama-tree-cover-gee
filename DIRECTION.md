@@ -1,14 +1,14 @@
 # Direction: framework, architecture, sample collection
 
-Single place for **where we’re going** given the research gap (10 m, 2025). Use this to align framework, architecture, and sample collection.
+Single place for **where we’re going** given the solution gap (10 m, chosen year). Use this to align framework, architecture, and sample collection. The **problem statement** and **what this product would solve** (if created) are in [SCOPE.md](SCOPE.md).
 
 ---
 
 ## Vision (fixed)
 
 - **Resolution:** 10 m (fill the gap: existing forest maps are 30 m).
-- **Target year:** 2025 (temporally updated product).
-- **Goal:** State-scale forest/non-forest map for Alabama that supports finer parcel/edge analysis and is **better than 30 m baselines** where we have better labels.
+- **Target year:** Chosen year (e.g. 2025) — temporally updated product.
+- **Goal:** State-scale forest/non-forest map for Alabama that supports finer parcel/edge analysis and is **better than 30 m baselines** where we have better labels. We fill the **intersection of the gap**: Alabama-specific, 10 m, FIA-validated, re-runable, with a stated forest definition and transparent pipeline (see SCOPE.md).
 
 ---
 
@@ -79,7 +79,7 @@ Single place for **where we’re going** given the research gap (10 m, 2025). Us
 - **NLCD RF** (train on NLCD, validate vs NLCD): ~0.79 OA, ~0.58 kappa — circular; good for “replicate NLCD at 10 m” only.
 - **NAIP-points RF** (train on manual NAIP points, validate vs NLCD): ~0.74 OA, ~0.48 kappa — when validated on NLCD, looks worse, but labels are independent; with more and better points we can aim above NLCD.
 
-**Direction for filling the research gap:**
+**Direction for filling the solution gap:**
 
 1. **Label source**  
    Move toward **hybrid** labels: NAIP + high-res reference (e.g. Google Satellite) for consistency. Keep NLCD as a baseline option, not the primary label source for the “best” run.

@@ -1,5 +1,6 @@
 /**
  * Alabama RF vs NLCD accuracy from uploaded assets.
+ * Scope: SCOPE.md.
  *
  * RECOMMENDED: Fastest way to get accuracy after your long RF export run (~2+ hr).
  * No need to re-run the main pipeline; just upload the two exported rasters as

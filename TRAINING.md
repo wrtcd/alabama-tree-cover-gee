@@ -1,6 +1,6 @@
 # Training and accuracy
 
-Concise guide: sample collection, validation, accuracy results, and GEE tips. For framework and direction see [DIRECTION.md](DIRECTION.md).
+Project goal and validation design are in [SCOPE.md](SCOPE.md) and [DIRECTION.md](DIRECTION.md). This doc: sample collection, validation, accuracy results, and GEE tips.
 
 ---
 

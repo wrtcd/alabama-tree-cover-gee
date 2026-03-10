@@ -1,5 +1,6 @@
 /**
  * Create NAIP labeling points for Alabama (export to Drive).
+ * Scope: SCOPE.md.
  *
  * Goal:
  * - Generate a balanced set of points (forest / non-forest + edge cases) for manual labeling in QGIS

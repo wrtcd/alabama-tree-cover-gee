@@ -1,5 +1,6 @@
 /**
  * Alabama forest map: Optical + Radar (Sentinel-2 + Sentinel-1) → RF
+ * Scope and problem statement: see SCOPE.md.
  *
  * MEMORY STRATEGY (to avoid "User memory limit exceeded"):
  * - Map: do NOT add full-state predictor stacks; export instead.
@@ -119,6 +120,8 @@ var LABEL_MODE = 'NAIP_POINTS';
 var NAIP_LABEL_POINTS_ASSET = 'projects/earthengine-441016/assets/alabama_naip_points_filtered_ndvi'; // from gee_naip_ndvi_timeseries.js
 var NAIP_POLYGONS_ASSET = 'projects/earthengine-441016/assets/alabama_naip_training_polygons';  // polygon FC with forest_label 0/1
 var NAIP_LABEL_PROPERTY = 'forest_lab';   // points: forest_lab; polygons: use forest_label or forest_lab (0/1 or "Forest"/"Non-forest")
+// Hold out this fraction of NAIP labels for validation (0 = no holdout). Only used when LABEL_MODE is NAIP_POINTS or NAIP_POLYGONS.
+var NAIP_HOLDOUT_RATIO = 0.2;  // 0.2 = 80% train, 20% test
 // Suffix for export filenames.
 var LABEL_SUFFIX = (LABEL_MODE === 'NLCD') ? 'nlcd' : 'naip';
 
@@ -176,6 +179,13 @@ var STRATIFIED_POINTS_PER_CLASS = 2000; // total samples ~ 2 * this (for 0/1)
 // Get metrics via gee_rf_accuracy_from_assets.js after uploading your RF + NLCD exports as assets (fast).
 var RUN_IN_SCRIPT_EVAL = false;
 
+// Spatial block (strip) holdout: exclude a region from training and validate only there (vs NLCD).
+// Set to true and define SPATIAL_HOLDOUT_REGION (geometry) to test generalization to unseen area.
+var SPATIAL_HOLDOUT_ENABLED = false;
+// Example: vertical strip across Alabama (minLon, minLat, maxLon, maxLat). Edit coords to your strip.
+var SPATIAL_HOLDOUT_REGION = ee.Geometry.Rectangle([-86.8, 31.5, -86.2, 34.5]);  // only used if SPATIAL_HOLDOUT_ENABLED
+var spatialHoldoutRegion = SPATIAL_HOLDOUT_ENABLED ? SPATIAL_HOLDOUT_REGION.intersection(alabamaBounds) : null;
+
 // Add terrain band (upsampled as needed).
 predictorImage = predictorImage.addBands(slope.rename('slope'));
 
@@ -193,8 +203,22 @@ if (LABEL_MODE === 'NAIP_POINTS') {
     .filter(ee.Filter.neq(NAIP_LABEL_PROPERTY, null))
     .map(toNumericLabel);
 
+  // Optional holdout: split into train / test for unbiased validation.
+  var withHoldout = naipPts.randomColumn('_holdout', RF_SEED + 50);
+  var trainPts = (NAIP_HOLDOUT_RATIO > 0)
+    ? withHoldout.filter(ee.Filter.lt('_holdout', 1 - NAIP_HOLDOUT_RATIO))
+    : withHoldout;
+  var testPtsNaip = (NAIP_HOLDOUT_RATIO > 0)
+    ? withHoldout.filter(ee.Filter.gte('_holdout', 1 - NAIP_HOLDOUT_RATIO))
+    : ee.FeatureCollection([]);
+
+  // Spatial strip holdout: exclude points inside the strip from training.
+  if (spatialHoldoutRegion) {
+    trainPts = trainPts.filter(ee.Filter.not(ee.Filter.intersects({ leftField: 'geometry', rightValue: spatialHoldoutRegion })));
+  }
+
   var sampled = predictorImage.addBands(slope.rename('slope')).sampleRegions({
-    collection: naipPts,
+    collection: trainPts,
     properties: [NAIP_LABEL_PROPERTY],
     scale: EXPORT_SCALE,
     geometries: false,
@@ -222,8 +246,26 @@ if (LABEL_MODE === 'NAIP_POINTS') {
     .filter(ee.Filter.neq(polyProp, null))
     .map(toNumericLabel);
 
+  // Optional holdout: use a fraction of polygons for validation (evaluated at polygon centroids).
+  var polysWithHoldout = polys.randomColumn('_holdout', RF_SEED + 50);
+  var trainPolys = (NAIP_HOLDOUT_RATIO > 0)
+    ? polysWithHoldout.filter(ee.Filter.lt('_holdout', 1 - NAIP_HOLDOUT_RATIO))
+    : polysWithHoldout;
+  var testPolysNaip = (NAIP_HOLDOUT_RATIO > 0)
+    ? polysWithHoldout.filter(ee.Filter.gte('_holdout', 1 - NAIP_HOLDOUT_RATIO))
+    : ee.FeatureCollection([]);
+  // Test points = one per held-out polygon (centroid) for validation.
+  var testPtsNaip = testPolysNaip.map(function(f) {
+    return ee.Feature(f.geometry().centroid(), f.toDictionary());
+  });
+
+  // Spatial strip holdout: exclude polygons that intersect the strip from training.
+  if (spatialHoldoutRegion) {
+    trainPolys = trainPolys.filter(ee.Filter.not(ee.Filter.intersects({ leftField: 'geometry', rightValue: spatialHoldoutRegion })));
+  }
+
   var sampled = predictorImage.addBands(slope.rename('slope')).sampleRegions({
-    collection: polys,
+    collection: trainPolys,
     properties: [polyProp],
     scale: EXPORT_SCALE,
     geometries: false,
@@ -242,11 +284,14 @@ if (LABEL_MODE === 'NAIP_POINTS') {
   allSamples = c0.merge(c1);
 
 } else {
+  // NLCD: no holdout (reference is the image). If spatial strip holdout, sample only outside the strip.
+  var testPtsNaip = ee.FeatureCollection([]);
+  var trainRegion = spatialHoldoutRegion ? alabamaBounds.difference(spatialHoldoutRegion) : alabamaBounds;
   // Stratified (balanced) sampling using NLCD mask as the class band.
   allSamples = trainingStack.stratifiedSample({
     numPoints: STRATIFIED_POINTS_PER_CLASS,
     classBand: 'forest_mask',
-    region: alabamaBounds,
+    region: trainRegion,
     scale: LABEL_SCALE,
     seed: RF_SEED,
     geometries: false,
@@ -297,6 +342,43 @@ if (RUN_IN_SCRIPT_EVAL) {
   print('Kappa:', cm.kappa());
   print('Producer accuracy (by ref class):', cm.producersAccuracy());
   print('Consumer accuracy (by pred class):', cm.consumersAccuracy());
+}
+
+// Held-out NAIP validation: when using NAIP labels, a fraction (NAIP_HOLDOUT_RATIO) is not used for training; accuracy on that set is printed here.
+if (LABEL_MODE !== 'NLCD' && NAIP_HOLDOUT_RATIO > 0) {
+  var testSampled = rfBinary.sampleRegions({
+    collection: testPtsNaip,
+    properties: [NAIP_LABEL_PROPERTY],
+    scale: EXPORT_SCALE,
+    geometries: false,
+    tileScale: 4
+  });
+  var cmHoldout = testSampled.errorMatrix(NAIP_LABEL_PROPERTY, 'forest_rf_05');
+  print('--- RF vs held-out NAIP labels (validation) ---');
+  print('Held-out sample size:', testPtsNaip.size());
+  print('Confusion matrix (rows=NAIP ref, cols=RF pred):', cmHoldout);
+  print('Overall accuracy (holdout):', cmHoldout.accuracy());
+  print('Kappa (holdout):', cmHoldout.kappa());
+}
+
+// Spatial strip/block holdout: accuracy in the excluded region only (vs NLCD). Tests generalization to unseen area.
+if (spatialHoldoutRegion) {
+  var stripEval = rfBinary.rename('rf').addBands(forestClasses.rename('ref')).clip(spatialHoldoutRegion);
+  var stripSamples = stripEval.stratifiedSample({
+    numPoints: 2000,
+    classBand: 'ref',
+    region: spatialHoldoutRegion,
+    scale: LABEL_SCALE,
+    seed: RF_SEED + 200,
+    geometries: false,
+    tileScale: 4
+  });
+  var cmStrip = stripSamples.errorMatrix('ref', 'rf');
+  print('--- Spatial holdout (strip/block) vs NLCD ---');
+  print('Strip sample size:', stripSamples.size());
+  print('Confusion matrix (rows=NLCD ref, cols=RF pred):', cmStrip);
+  print('Overall accuracy (strip):', cmStrip.accuracy());
+  print('Kappa (strip):', cmStrip.kappa());
 }
 
 // Avoid "User memory limit exceeded": do not add full-state RF layer to the map.

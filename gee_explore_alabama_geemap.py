@@ -1,6 +1,7 @@
 """
 GEE exploration for Path A: Optical + NLCD → RF
 Alabama AOI, cloud-free composite + NLCD, small-tile export.
+Scope: SCOPE.md.
 Run locally with: python gee_explore_alabama_geemap.py
 Requires: pip install geemap earthengine-api
 Authenticate once: earthengine authenticate

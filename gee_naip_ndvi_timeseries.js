@@ -1,5 +1,6 @@
 /**
  * NAIP-labeled points → Sentinel-2 NDVI timeseries (12 months) + quality filter
+ * Scope: SCOPE.md.
  *
  * Uses your ~700 manually labeled NAIP points to:
  * 1. Build a 12-month (Jan–Dec) NDVI timeseries from Sentinel-2 at each point.
