@@ -1,7 +1,0 @@
----
-description: Alabama tree cover on GEE; 10 m, chosen year. Scope and problem statement in SCOPE.md; direction in DIRECTION.md.
-globs:
-alwaysApply: true
----
-
-Use SCOPE.md for scope: problem statement, what the product solves, in/out of scope, artifacts. Use DIRECTION.md for framework, architecture, sample collection; TRAINING.md for training and accuracy. Align suggestions with these. Key: 10 m, chosen year, RF, quality labels (points + polygons), validation (hold-out, FIA). Not in scope: PlanetScope, per-scene DL, small-area-only.
